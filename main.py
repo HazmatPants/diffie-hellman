@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import argparse
 import asyncio
 import secrets
 import base64
@@ -7,12 +8,24 @@ import socket
 import time
 import json
 
+parser = argparse.ArgumentParser(
+                    prog='diffie-hellam',
+                    description='Diffie-Hellman Key Exchange',
+                    epilog='Text at the bottom of help')
+
+parser.add_argument("-v", "--verbose", action="store_true")
+
+args = parser.parse_args()
+
 CRYPT_KEY: bytes = None
 
 host = "127.0.0.1"
 port = 9999
 
-secret_size = 1000000
+secret_size = 256
+MODULUS = 0xFFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1
+BASE = 2
+
 
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -20,8 +33,9 @@ s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 async def main():
     choice = input("(c)lient or (s)erver?: ")
     if choice.lower() == "c":
-        base = secrets.randbelow(secret_size)
-        mod = secrets.randbelow(secret_size)
+        s.settimeout(5)
+        base = BASE
+        mod = MODULUS
         secret = secrets.randbelow(secret_size)
 
         data: dict = {
@@ -29,43 +43,55 @@ async def main():
             "m": mod
         }
 
-        print("Negotiating encryption key...")
+        log("Negotiating encryption key...", False)
 
-        print(f"Chose base {base} and modulus {mod}")
+        log(f"Chose base {base} and modulus {mod}")
 
         send_json(data, (host, port))
 
-        print(f"Sent base and modulus to {host}:{port}")
+        log(f"Sent base and modulus to {host}:{port}")
 
         bm = pow(base, secret, mod)
 
         send_str(str(bm), (host, port))
-        data = await recv_str()
+        try:
+            data = await recv_str()
+        except socket.timeout:
+            print("Connection timed out.")
+            s.close()
+            exit()
+
         client_bm = int(data)
         
-        print("Generating key...")
+        log("Generating key...")
         key = (client_bm ** secret) % mod
         CRYPT_KEY = key.to_bytes((key.bit_length() + 7) // 8, "big")
         key_str = base64.b64encode(CRYPT_KEY).decode()
-        print(f"key: {key_str}")
-        print("Successfully negotiated key!")
+        log(f"key: {key_str}")
+        log("Successfully negotiated key!")
 
         send_crypt_str("TEST_TEST_TEST_123", (host, port), CRYPT_KEY)
-        print("Testing encryption...")
+        log("Testing encryption...")
 
         data = await recv_crypt_str(CRYPT_KEY)
 
         if data == "OK":
-            print("Encryption handshake success!")
+            log("Encryption handshake success!", False)
+
+        log("Send 'goodbye' to disconnect.", False)
 
         while True:
             try:
                 data = input(">>> ")
                 send_crypt_str(data, (host, port), CRYPT_KEY)
-                print(f"Sent: {data}")
+                log(f"Sent: {data}", False)
                 if data == "goodbye":
                     s.close()
                     exit()
+            except KeyboardInterrupt:
+                print("\nExiting...")
+                s.close()
+                exit()
             except Exception as err:
                 print(f"ERROR: {err}")
                 s.close()
@@ -73,12 +99,12 @@ async def main():
 
     elif choice.lower() == "s":
         s.bind((host, port))
-        print(f"Server listening on {host}:{port}")
+        log(f"Server listening on {host}:{port}", False)
         data, addr = recv_json()
-        print("Negotiating encryption key...")
+        log("Negotiating encryption key...", False)
         base = data["b"]
         mod = data["m"]
-        print(f"Received base {base} and modulus {mod}")
+        log(f"Received base {base} and modulus {mod}")
 
         secret = secrets.randbelow(secret_size)
 
@@ -88,30 +114,30 @@ async def main():
         client_bm = int(data)
         send_str(str(bm), addr)
 
-        print("Generating key...")
+        log("Generating key...")
         key = (client_bm ** secret) % mod
         CRYPT_KEY = key.to_bytes((key.bit_length() + 7) // 8, "big")
         key_str = base64.b64encode(CRYPT_KEY).decode()
-        print(f"key: {key_str}")
-        print("Successfully negotiated key!")
+        log(f"key: {key_str}")
+        log("Successfully negotiated key!")
 
         data = await recv_crypt_str(CRYPT_KEY)
 
         if data == "TEST_TEST_TEST_123":
-            print("Encryption handshake success!")
+            log("Encryption handshake success!", False)
             send_crypt_str("OK", addr, CRYPT_KEY)
 
         while True:
             try:
                 data = await recv_crypt_str(CRYPT_KEY)
-                print(f"Received: {data}")
+                log(f"Received: {data}", False)
 
                 if data == "goodbye":
-                    print("Goodbye client")
+                    log("Goodbye client", False)
                     s.close()
                     exit()
             except Exception as err:
-                print(f"ERROR: {err}")
+                log(f"ERROR: {err}", False)
                 s.close()
                 exit()
 
@@ -127,7 +153,7 @@ async def recv_str():
 async def recv_crypt_str(key):
     data, addr = s.recvfrom(1024)
     ciphertext = bytes.fromhex(data.decode("utf-8"))
-    print(f"Received encrypted string: {ciphertext}")
+    log(f"Received encrypted string: {ciphertext}")
     text = xor_crypt(ciphertext, key)
     return text.decode("utf-8")
 
@@ -150,5 +176,12 @@ def xor_crypt(data: bytes, key: bytes) -> bytes:
         for i in range(len(data))
     )
 
+def log(text: str, verbose: bool=True):
+    localtime = time.localtime()
+    timestamp = time.strftime("%m-%d-%Y, %H:%M:%S", localtime)
+    if verbose and args.verbose:
+        print(f"[{timestamp}] {text}")
+    elif not verbose:
+        print(f"[{timestamp}] {text}")
 if __name__ == "__main__":
     asyncio.run(main())
