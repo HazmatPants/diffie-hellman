@@ -8,6 +8,8 @@ import socket
 import time
 import json
 
+START_TIME = time.time()
+
 parser = argparse.ArgumentParser(
                     prog='diffie-hellam',
                     description='Diffie-Hellman Key Exchange',
@@ -85,9 +87,13 @@ async def main():
                 data = input(">>> ")
                 send_crypt_str(data, (host, port), CRYPT_KEY)
                 log(f"Sent: {data}", False)
-                if data == "goodbye":
-                    s.close()
-                    exit()
+                match data:
+                    case "goodbye" | "exit" | "bye":
+                        s.close()
+                        exit()
+                    case _:
+                        data = await recv_crypt_str(CRYPT_KEY)
+                        log(f"Response: {data}", False)
             except KeyboardInterrupt:
                 print("\nExiting...")
                 s.close()
@@ -132,10 +138,20 @@ async def main():
                 data = await recv_crypt_str(CRYPT_KEY)
                 log(f"Received: {data}", False)
 
-                if data == "goodbye":
-                    log("Goodbye client", False)
-                    s.close()
-                    exit()
+                match data:
+                    case "goodbye" | "exit" | "bye":
+                        log("Goodbye client", False)
+                        s.close()
+                        exit()
+                    case "uptime":
+                        uptime = time.time() - START_TIME
+                        send_crypt_str(str(uptime), addr, CRYPT_KEY)
+                    case "key":
+                        key_str = base64.b64encode(CRYPT_KEY).decode()
+                        send_crypt_str(key_str, addr, CRYPT_KEY)
+                    case _:
+                        send_crypt_str(data, addr, CRYPT_KEY)
+
             except Exception as err:
                 log(f"ERROR: {err}", False)
                 s.close()
