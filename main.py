@@ -11,7 +11,7 @@ import json
 START_TIME = time.time()
 
 parser = argparse.ArgumentParser(
-                    prog='diffie-hellam',
+                    prog='diffie-hellman',
                     description='Diffie-Hellman Key Exchange',
                     epilog='Text at the bottom of help')
 
