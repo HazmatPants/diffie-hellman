@@ -1,6 +1,6 @@
 I saw [this video](https://www.youtube.com/watch?v=85oMrKd8afY) on Diffie-Hellman key exchange and decided to try implement it in python.
 
-You can use the `--verbose` option when running the script the get additional output.
+You can use the `--verbose` option when running the script to get additional output.
 
 When run, the script will prompt for either client or server:
 
