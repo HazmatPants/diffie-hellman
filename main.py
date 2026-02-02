@@ -12,8 +12,7 @@ START_TIME = time.time()
 
 parser = argparse.ArgumentParser(
                     prog='diffie-hellman',
-                    description='Diffie-Hellman Key Exchange',
-                    epilog='Text at the bottom of help')
+                    description='Diffie-Hellman Key Exchange')
 
 parser.add_argument("-v", "--verbose", action="store_true")
 
